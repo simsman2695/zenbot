@@ -1,13 +1,14 @@
-module.exports = function api () {
+module.exports = function api() {
+  let tcpPortUsed = require('tcp-port-used')
   let express = require('express')
   let app = express()
   let random_port = require('random-port')
   let path = require('path')
   let moment = require('moment')
 
-  let run = function(reporter, tradeObject) {
+  let run = function (reporter, tradeObject) {
     if (!reporter.port || reporter.port === 0) {
-      random_port({from: 20000}, function(port) {
+      random_port({from: 20000}, function (port) {
         startServer(port, reporter.ip, tradeObject)
       })
     } else {
@@ -22,22 +23,31 @@ module.exports = function api () {
   }
 
   // set up rate limiter: maximum of fifty requests per minute
-  let RateLimit = require('express-rate-limit');
+  let RateLimit = require('express-rate-limit')
   let limiter = new RateLimit({
-    windowMs: 1*60*1000, // 1 minute
+    windowMs: 1 * 60 * 1000, // 1 minute
     max: 50
-  });
+  })
 
-  let startServer = function(port, ip, tradeObject) {
+
+  let startServer = async function (port, ip, tradeObject) {
     tradeObject.port = port
+    let inUse = true
+    while(inUse) {
+      console.log(tradeObject.port)
+      inUse = await tcpPortUsed.check(tradeObject.port, ip)
+      if(inUse) {
+        tradeObject.port = tradeObject.port + 1
+      }
+    }
 
-    app.set('views', path.join(__dirname+'/../../templates'))
+    app.set('views', path.join(__dirname + '/../../templates'))
     app.set('view engine', 'ejs')
 
-    app.use(limiter);
-    app.use('/assets', express.static(__dirname+'/../../templates/dashboard_assets'))
-    app.use('/assets-wp', express.static(__dirname+'/../../dist/'))
-    app.use('/assets-zenbot', express.static(__dirname+'/../../assets'))
+    app.use(limiter)
+    app.use('/assets', express.static(__dirname + '/../../templates/dashboard_assets'))
+    app.use('/assets-wp', express.static(__dirname + '/../../dist/'))
+    app.use('/assets-zenbot', express.static(__dirname + '/../../assets'))
 
     app.get('/', function (req, res) {
       app.locals.moment = moment
@@ -51,15 +61,15 @@ module.exports = function api () {
     })
 
     app.get('/stats', function (req, res) {
-      res.sendFile(path.join(__dirname+'../../../stats/index.html'))
+      res.sendFile(path.join(__dirname + '../../../stats/index.html'))
     })
 
     if (ip && ip !== '0.0.0.0') {
-      app.listen(port, ip)
-      tradeObject.url = ip + ':' + port + '/'
+      app.listen(tradeObject.port, ip)
+      tradeObject.url = ip + ':' + tradeObject.port + '/'
     } else {
-      app.listen(port)
-      tradeObject.url = require('ip').address() + ':' + port + '/'
+      app.listen(tradeObject.port)
+      tradeObject.url = require('ip').address() + ':' + tradeObject.port + '/'
     }
     console.log('Web GUI running on http://' + tradeObject.url)
   }
